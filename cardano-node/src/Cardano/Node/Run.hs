@@ -338,8 +338,8 @@ createDiffusionArguments
   -> DiffusionArguments
 createDiffusionArguments addrs myLocalAddr ipProducers dnsProducers =
   DiffusionArguments
-    { daAddresses = addrs
-    , daLocalAddress = myLocalAddr
+    { daAddresses = Right addrs
+    , daLocalAddress = Right myLocalAddr
     , daIpProducers = ipProducers
     , daDnsProducers = dnsProducers
     -- TODO: these limits are arbitrary at the moment;
