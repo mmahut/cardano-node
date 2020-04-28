@@ -15,10 +15,18 @@ Flag unexpected_thunks
   Description:   Turn on unexpected thunks checks
   Default:       False
 
+Flag with_systemd
+  Description:   Turn on support for sockets from systemd
+  Default:       False
+
 library
 
   if flag(unexpected_thunks)
     cpp-options: -DUNEXPECTED_THUNKS
+
+  if flag(with_systemd)
+    cpp-options: -DSYSTEMD_SOCKETS
+    build-depends:     systemd
 
   hs-source-dirs:      src
 
