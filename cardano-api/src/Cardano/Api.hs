@@ -48,6 +48,11 @@ module Cardano.Api
 
   , queryFilteredUTxOFromLocalState
   , queryPParamsFromLocalState
+
+  -- Delegation Certificate Related
+  , shelleyDeregisterStakingAddress
+  , shelleyDelegateStake
+  , shelleyRegisterStakingAddress
   ) where
 
 import           Cardano.Prelude
@@ -81,10 +86,10 @@ import qualified Cardano.Chain.Common  as Byron
 import qualified Cardano.Chain.Genesis as Byron
 import qualified Cardano.Chain.UTxO    as Byron
 
-import qualified Shelley.Spec.Ledger.Keys      as Shelley
-import qualified Shelley.Spec.Ledger.TxData    as Shelley
-import qualified Shelley.Spec.Ledger.Tx        as Shelley
-import qualified Shelley.Spec.Ledger.BaseTypes as Shelley
+import qualified Shelley.Spec.Ledger.Keys         as Shelley
+import qualified Shelley.Spec.Ledger.TxData       as Shelley
+import qualified Shelley.Spec.Ledger.Tx           as Shelley
+import qualified Shelley.Spec.Ledger.BaseTypes    as Shelley
 
 
 byronGenSigningKey :: IO SigningKey
@@ -94,6 +99,37 @@ byronGenSigningKey =
 shelleyGenSigningKey :: IO SigningKey
 shelleyGenSigningKey =
     SigningKeyShelley . Shelley.SKey <$> runSecureRandom genKeyDSIGN
+
+-- | Register a shelley staking key.
+shelleyRegisterStakingAddress
+  :: ShelleyVerificationKeyHash
+  -> Certificate
+shelleyRegisterStakingAddress vKeyHash= do
+  let cred = mkShelleyCredential vKeyHash
+  ShelleyDelegationCertificate $ Shelley.DCertDeleg $ Shelley.RegKey cred
+
+-- | Deregister a shelley staking key.
+shelleyDeregisterStakingAddress
+  :: ShelleyVerificationKeyHash
+  -> Certificate
+shelleyDeregisterStakingAddress vKeyHash = do
+  let cred = mkShelleyCredential vKeyHash
+  ShelleyDelegationCertificate $ Shelley.DCertDeleg $ Shelley.DeRegKey cred
+
+-- | Delegate your stake (as the delegator) to a specified delegatee.
+shelleyDelegateStake
+  :: ShelleyVerificationKeyHash
+  -- ^ Delegator verification key hash
+  -> ShelleyVerificationKeyHash
+  -- ^ Delegatee verification key hash
+  -> Certificate
+shelleyDelegateStake delegatorKeyHash delegateeKeyHash = do
+  let cred = mkShelleyCredential delegatorKeyHash
+  ShelleyDelegationCertificate $ Shelley.DCertDeleg $ Shelley.Delegate $ Shelley.Delegation cred delegateeKeyHash
+
+mkShelleyCredential :: ShelleyVerificationKeyHash -> ShelleyCredential
+mkShelleyCredential vKey =
+  Shelley.KeyHashObj vKey
 
 -- Given key information (public key, and other network parameters), generate an Address.
 -- Originally: mkAddress :: Network -> VerificationKey -> VerificationKeyInfo -> Address
