@@ -81,7 +81,6 @@ import qualified Cardano.Chain.Common  as Byron
 import qualified Cardano.Chain.Genesis as Byron
 import qualified Cardano.Chain.UTxO    as Byron
 
-import qualified Shelley.Spec.Ledger.Address   as Shelley
 import qualified Shelley.Spec.Ledger.Keys      as Shelley
 import qualified Shelley.Spec.Ledger.TxData    as Shelley
 import qualified Shelley.Spec.Ledger.Tx        as Shelley
@@ -216,6 +215,7 @@ witnessTransaction txu nw signKey =
         TxWitShelley $ shelleyWitnessTransaction tx signKey
 
 byronWitnessTransaction :: Crypto.Hash Byron.Tx -> Network -> SigningKey -> ByronWitness
+byronWitnessTransaction _ _ (SigningKeyShelley _) = panic "Cardano.Api.byronWitnessTransaction: Please provide a shelley signing key."
 byronWitnessTransaction txHash nw (SigningKeyByron signKey) =
     Byron.VKWitness
       (Crypto.toVerification signKey)
@@ -229,6 +229,7 @@ byronWitnessTransaction txHash nw (SigningKeyByron signKey) =
         Testnet pm -> pm
 
 shelleyWitnessTransaction :: ShelleyTxBody -> SigningKey -> ShelleyWitnessVKey
+shelleyWitnessTransaction _ (SigningKeyByron _) = panic "Cardano.Api.shelleyWitnessTransaction: Please provide a byron signing key."
 shelleyWitnessTransaction txbody (SigningKeyShelley sk) =
     Shelley.WitVKey vk sig
   where
