@@ -20,12 +20,16 @@ import           Cardano.CLI.Ops (CliError (..))
 import           Cardano.Config.Protocol (mkConsensusProtocol)
 import           Cardano.Config.Types
 import           Cardano.CLI.Ops (withIOManagerE)
+import           Cardano.CLI.Shelley.Run.SingleAddressWallet
+                   (buildSingleAddressWalletTransaction)
 
 import           Cardano.CLI.Shelley.Parsers
 import qualified Ouroboros.Consensus.Cardano as Consensus
-import           Ouroboros.Consensus.Node.ProtocolInfo (pInfoConfig)
+import           Ouroboros.Consensus.Config as Consensus (configCodec)
+import           Ouroboros.Consensus.Node.ProtocolInfo
+                   (ProtocolInfo(..), pInfoConfig)
+import           Ouroboros.Consensus.Node.Run (nodeNetworkMagic)
 import           Cardano.Config.Types (CertificateFile (..))
-
 
 import           Control.Monad.Trans.Except (ExceptT)
 import           Control.Monad.Trans.Except.Extra (firstExceptT, left, newExceptT)
@@ -40,6 +44,8 @@ runTransactionCmd cmd =
       runTxSign txinfile skfiles network txoutfile
     TxSubmit txFp configFp sockFp ->
       runTxSubmit txFp configFp sockFp
+    TxSingleAddrWallet sk mbTtl configFp sockFp txOutputFile ->
+      runSingleAddressWallet sk mbTtl configFp sockFp txOutputFile
 
     _ -> liftIO $ putStrLn $ "runTransactionCmd: " ++ show cmd
 
@@ -91,6 +97,30 @@ runTxSubmit txFp configFp sktFp =
                    (prepareTxShelley signedTx)
       _ -> left $ IncorrectProtocolSpecifiedError (ncProtocol nc)
 
+runSingleAddressWallet
+  :: SigningKeyFile
+  -> Maybe SlotNo
+  -> ConfigYamlFilePath
+  -> SocketPath
+  -> TxFile
+  -> ExceptT CliError IO ()
+runSingleAddressWallet skeyFile mbTxTtl configFp sockFp (TxFile outfile) = do
+  skey <- firstExceptT (KeyCliError . ReadSigningKeyError)
+    . newExceptT
+    $ readSigningKeyFile skeyFile
+  nc <- liftIO $ parseNodeConfigurationFP configFp
+  consensusPtcl <- firstExceptT ProtocolError $ mkConsensusProtocol nc Nothing
+  case consensusPtcl of
+    SomeConsensusProtocol ptcl@Consensus.ProtocolRealTPraos{} -> do
+      let ProtocolInfo{pInfoConfig = ptclCfg} = Consensus.protocolInfo ptcl
+          codecCfg = Consensus.configCodec ptclCfg
+          nm = nodeNetworkMagic (Proxy :: Proxy blk) ptclCfg
+      tx <- buildSingleAddressWalletTransaction codecCfg nm sockFp mbTxTtl skey
+      firstExceptT CardanoApiError
+        . newExceptT
+        $ writeTxSigned outfile tx
+
+    _ -> left $ IncorrectProtocolSpecifiedError (ncProtocol nc)
 
 
 -- TODO : This is nuts. The 'cardano-api' and 'cardano-config' packages both have functions

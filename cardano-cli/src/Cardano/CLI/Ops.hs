@@ -306,6 +306,7 @@ data CliError
   | NodeLocalStateQueryError !LocalStateQueryError
   | AddressDescribeError !Text
   | CliTextViewFileError !TextViewFileError
+  | SingleAddressWalletError
 
 instance Show CliError where
   show (AddressCliError e)
@@ -406,6 +407,8 @@ instance Show CliError where
     = T.unpack txt
   show (CliTextViewFileError err)
     = T.unpack $ renderTextViewFileError err
+  show SingleAddressWalletError
+    = "The single-address wallet encountered an unknown error."
 
 data RealPBFTError
   = IncorrectProtocolSpecified !Protocol

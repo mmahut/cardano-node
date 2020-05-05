@@ -93,6 +93,7 @@ data TransactionCmd
   | TxCheck         -- { transaction :: Transaction, nodeAddr :: NodeAddress }
   | TxSubmit FilePath ConfigYamlFilePath SocketPath
   | TxInfo          -- { transaction :: Transaction, nodeAddr :: NodeAddress }
+  | TxSingleAddrWallet SigningKeyFile (Maybe SlotNo) ConfigYamlFilePath SocketPath TxFile
   deriving (Eq, Show)
 
 
@@ -336,6 +337,8 @@ pTransaction =
           (Opt.info pTransactionSubmit $ Opt.progDesc "Submit a transaction")
       , Opt.command "info"
           (Opt.info pTransactionInfo $ Opt.progDesc "Print information about a transaction")
+      , Opt.command "single-addr-wallet"
+          (Opt.info pTransactionSingleAddrWallet $ Opt.progDesc "Testing single addr wallet")
       ]
   where
     pTransactionBuild :: Parser TransactionCmd
@@ -368,6 +371,15 @@ pTransaction =
 
     pTransactionInfo  :: Parser TransactionCmd
     pTransactionInfo = pure TxInfo
+
+    pTransactionSingleAddrWallet :: Parser TransactionCmd
+    pTransactionSingleAddrWallet =
+      TxSingleAddrWallet
+        <$> pSigningKeyFile Input
+        <*> Opt.optional pTxTTL
+        <*> (ConfigYamlFilePath <$> parseConfigFile)
+        <*> pSocketPath
+        <*> pTxFile Output
 
 
 pNodeCmd :: Parser NodeCmd
