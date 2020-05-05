@@ -1,7 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 module Test.Cardano.Api.Gen
   ( genAddress
+  , genCertificate
   , genNetwork
   , genSigningKey
   , genSigningKeyByron
@@ -21,6 +23,8 @@ import           Cardano.Api
 import           Cardano.Binary (serialize)
 import qualified Cardano.Crypto as Byron
 import           Cardano.Crypto.DSIGN
+import           Cardano.Crypto.VRF.Class (deriveVerKeyVRF, genKeyVRF)
+import           Cardano.Crypto.VRF.Simple (SimpleVRF)
 import           Cardano.Prelude
 import qualified Cardano.Crypto.Hash.Class as Crypto
 import qualified Cardano.Crypto.Hash.Blake2b as Crypto
@@ -31,14 +35,19 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import           Data.Coerce (coerce)
 import qualified Data.Map.Strict as Map
+import           Data.Ratio (approxRational)
 import qualified Data.Sequence.Strict as StrictSeq
 import qualified Data.Set as Set
 
 
-import           Shelley.Spec.Ledger.BaseTypes (StrictMaybe (..))
+import           Shelley.Spec.Ledger.BaseTypes
+                   (StrictMaybe (..), UnitInterval, mkDnsName, mkUnitInterval, mkUrl)
 import           Shelley.Spec.Ledger.Coin (Coin (..))
-import           Shelley.Spec.Ledger.Keys
-import           Shelley.Spec.Ledger.TxData (pattern TxBody, Wdrl (..))
+import           Shelley.Spec.Ledger.Keys (SignKeyVRF, SKey(..), VerKeyVRF, hash, hashKey)
+import           Shelley.Spec.Ledger.Slot (EpochNo(..))
+import           Shelley.Spec.Ledger.TxData
+                   (PoolMetaData (..), RewardAcnt (..), StakePoolRelay (..),
+                    pattern TxBody, Wdrl (..))
 
 import           Test.Cardano.Chain.UTxO.Gen (genTx)
 import qualified Test.Cardano.Crypto.Gen as Byron
@@ -55,12 +64,56 @@ genAddress =
     , genVerificationKeyAddressShelley
     ]
 
+genCertificate :: Gen Certificate
+genCertificate = do
+  Gen.choice
+    [ -- Stake Key related
+      genStakingKeyRegistrationCert
+    , genStakingKeyDeregistrationCert
+    , genStakingKeyDelegationCert
+      -- Stake pool related
+    , genShelleyStakePoolRegistrationCertificate
+    , genShelleyStakePoolRetirementCertificate
+    ]
+
+genCredentialShelley :: Gen ShelleyCredential
+genCredentialShelley = do
+  vKeyHash <- genVerificationKeyHashShelley
+  return $ mkShelleyCredential vKeyHash
+
+genEpochNoShelly :: Gen EpochNo
+genEpochNoShelly = do
+  slot <- Gen.word64 (Range.linear minBound maxBound)
+  return $ EpochNo slot
+
+genStakingKeyRegistrationCert :: Gen Certificate
+genStakingKeyRegistrationCert = do
+  vKeyHash <- genVerificationKeyHashShelley
+  pure $ shelleyRegisterStakingAddress vKeyHash
+
+genStakingKeyDeregistrationCert :: Gen Certificate
+genStakingKeyDeregistrationCert = do
+  vKeyHash <- genVerificationKeyHashShelley
+  pure $ shelleyDeregisterStakingAddress vKeyHash
+
+genStakingKeyDelegationCert :: Gen Certificate
+genStakingKeyDelegationCert = do
+  delegator_vKeyHash <- genVerificationKeyHashShelley
+
+  delegatee_vKeyHash <- genVerificationKeyHashShelley
+  pure $ shelleyDelegateStake delegator_vKeyHash delegatee_vKeyHash
+
 genNetwork :: Gen Network
 genNetwork =
   Gen.choice
     [ pure Mainnet
     , Testnet <$> Byron.genProtocolMagicId
     ]
+
+genRewardAccountShelley :: Gen ShelleyRewardAccount
+genRewardAccountShelley = do
+  cred <- genCredentialShelley
+  return $ RewardAcnt cred
 
 genSigningKey :: Gen SigningKey
 genSigningKey =
@@ -78,6 +131,49 @@ genSigningKeyShelley = do
   seed <- genSeed
   let sk = fst (withDRG (drgNewTest seed) genKeyDSIGN)
   return $ SigningKeyShelley (SKey sk)
+
+genShelleyStakePoolRegistrationCertificate :: Gen Certificate
+genShelleyStakePoolRegistrationCertificate =
+  shelleyRegisterStakePool
+    <$> genVerificationKeyHashShelley
+    <*> genVRFVerificationKeyHashShelley
+    <*> (Coin <$> Gen.integral (Range.linear 0 10000000000))
+    <*> (Coin <$> Gen.integral (Range.linear 0 10000000000))
+    <*> genStakePoolMarginShelley
+    <*> genRewardAccountShelley
+    <*> genStakePoolOwnersShelley
+    <*> Gen.list (Range.linear 1 5) genStakePoolRelayShelley
+    <*> (Just <$> genPoolMetaDataShelley)
+
+-- TODO: Improve this generator.
+genPoolMetaDataShelley :: Gen ShelleyStakePoolMetaData
+genPoolMetaDataShelley = return $ PoolMetaData (mkUrl "Test") "Test"
+
+-- TODO: Cover SingleHostName and MultiHostName data constructors
+-- It also seems impossible to construct the `Port` type as the
+-- constructors aren't exposed nor a function to create one.
+genStakePoolRelayShelley :: Gen ShelleyStakePoolRelay
+genStakePoolRelayShelley = do
+  --port <- Gen.word16 (Range.linear minBound maxBound)
+  return $ SingleHostName SNothing (mkDnsName "Test")
+
+genShelleyStakePoolRetirementCertificate :: Gen Certificate
+genShelleyStakePoolRetirementCertificate = do
+  vKey <- genVerificationKeyShelley
+  epochNo <- genEpochNoShelly
+  return $ shelleyRetireStakePool vKey epochNo
+
+genStakePoolOwnersShelley :: Gen ShelleyStakePoolOwners
+genStakePoolOwnersShelley = do
+  keyHashes <- Gen.list (Range.linear 1 5) genVerificationKeyHashShelley
+  return $ Set.fromList keyHashes
+
+-- TODO: Should make sure this covers
+-- the 0 to 1 range adequately.
+genStakePoolMarginShelley :: Gen UnitInterval
+genStakePoolMarginShelley = do
+  numerator' <- Gen.double (Range.constantFrom 0 0 1)
+  Gen.just . pure $ mkUnitInterval $ approxRational numerator' 1
 
 genTxIn :: Gen TxIn
 genTxIn =
@@ -155,6 +251,24 @@ genVerificationKeyByron =
 genVerificationKeyShelley :: Gen VerificationKey
 genVerificationKeyShelley =
   getVerificationKey <$> genSigningKeyShelley
+
+genVerificationKeyHashShelley :: Gen ShelleyVerificationKeyHash
+genVerificationKeyHashShelley = do
+  VerificationKeyShelley vk <- genVerificationKeyShelley
+  return $ hashKey vk
+
+genVRFKeyPair :: Gen (SignKeyVRF SimpleVRF, VerKeyVRF SimpleVRF)
+genVRFKeyPair = do
+  seed <- genSeed
+  pure $ fst $ withDRG (drgNewTest seed) $ do
+     sk <- genKeyVRF
+     let vk = deriveVerKeyVRF sk
+     pure (sk, vk)
+
+genVRFVerificationKeyHashShelley :: Gen ShelleyVRFVerificationKeyHash
+genVRFVerificationKeyHashShelley = do
+  (_, vrfVKey) <- genVRFKeyPair
+  return $ hash vrfVKey
 
 -- -------------------------------------------------------------------------------------------------
 

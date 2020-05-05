@@ -49,10 +49,22 @@ module Cardano.Api
   , queryFilteredUTxOFromLocalState
   , queryPParamsFromLocalState
 
-  -- Delegation Certificate Related
+  , ShelleyCredential
+  , ShelleyRewardAccount
+  , ShelleyStakePoolMetaData
+  , ShelleyStakePoolOwners
+  , ShelleyStakePoolRelay
+  , ShelleyVerificationKeyHash
+  , ShelleyVRFVerificationKeyHash
+  , mkShelleyCredential
+
+  -- * Shelley Delegation Certificate Related
+  , Certificate(..)
   , shelleyDeregisterStakingAddress
   , shelleyDelegateStake
   , shelleyRegisterStakingAddress
+  , shelleyRegisterStakePool
+  , shelleyRetireStakePool
   ) where
 
 import           Cardano.Prelude
@@ -86,11 +98,11 @@ import qualified Cardano.Chain.Common  as Byron
 import qualified Cardano.Chain.Genesis as Byron
 import qualified Cardano.Chain.UTxO    as Byron
 
-import qualified Shelley.Spec.Ledger.Keys         as Shelley
-import qualified Shelley.Spec.Ledger.TxData       as Shelley
-import qualified Shelley.Spec.Ledger.Tx           as Shelley
-import qualified Shelley.Spec.Ledger.BaseTypes    as Shelley
-
+import qualified Shelley.Spec.Ledger.Keys      as Shelley
+import qualified Shelley.Spec.Ledger.Slot      as Shelley
+import qualified Shelley.Spec.Ledger.TxData    as Shelley
+import qualified Shelley.Spec.Ledger.Tx        as Shelley
+import qualified Shelley.Spec.Ledger.BaseTypes as Shelley
 
 byronGenSigningKey :: IO SigningKey
 byronGenSigningKey =
@@ -99,6 +111,58 @@ byronGenSigningKey =
 shelleyGenSigningKey :: IO SigningKey
 shelleyGenSigningKey =
     SigningKeyShelley . Shelley.SKey <$> runSecureRandom genKeyDSIGN
+
+-- | Register a shelley staking pool.
+shelleyRegisterStakePool
+  :: ShelleyVerificationKeyHash
+  -- ^ Pool public key.
+  -> ShelleyVRFVerificationKeyHash
+  -- ^ VRF verification key hash.
+  -> ShelleyCoin
+  -- ^ Pool pledge.
+  -> ShelleyCoin
+  -- ^ Pool cost.
+  -> ShelleyStakePoolMargin
+  -- ^ Pool margin.
+  -> ShelleyRewardAccount
+  -- ^ Pool reward account.
+  -> ShelleyStakePoolOwners
+  -- ^ Pool owners.
+  -> [Shelley.StakePoolRelay] --Seq.StrictSeq Shelley.StakePoolRelay
+  -- ^ Pool relays.
+  -> Maybe Shelley.PoolMetaData -- Shelley.StrictMaybe Shelley.PoolMetaData
+  -> Certificate
+shelleyRegisterStakePool poolVkeyHash vrfVkeyHash pldg cst
+                          mrgn rwdact ownrs relays md = do
+  let poolPubKeyHash = poolVkeyHash
+      poolVRFkeyHash = vrfVkeyHash
+      poolPledge = pldg
+      poolCost = cst
+      poolMargin = mrgn
+      poolRewardAcnt = rwdact
+      poolOwners = ownrs
+      poolRelays = Seq.fromList relays
+      poolMetaData = Shelley.maybeToStrictMaybe md
+
+  let poolParams = Shelley.PoolParams
+                     { Shelley._poolPubKey = poolPubKeyHash
+                     , Shelley._poolVrf = poolVRFkeyHash
+                     , Shelley._poolPledge = poolPledge
+                     , Shelley._poolCost = poolCost
+                     , Shelley._poolMargin = poolMargin
+                     , Shelley._poolRAcnt = poolRewardAcnt
+                     , Shelley._poolOwners = poolOwners
+                     , Shelley._poolRelays = poolRelays
+                     , Shelley._poolMD = poolMetaData
+                     }
+  ShelleyStakePoolCertificate . Shelley.DCertPool . Shelley.RegPool $ poolParams
+
+-- | Retire a shelley staking pool.
+shelleyRetireStakePool :: VerificationKey -> Shelley.EpochNo -> Certificate
+shelleyRetireStakePool (VerificationKeyShelley vKey) eNo =
+  ShelleyStakePoolCertificate . Shelley.DCertPool $ Shelley.RetirePool (Shelley.hashKey vKey) eNo
+shelleyRetireStakePool _ _ = panic "Cardano.Api.shelleyRetireStakePool: Please use a shelley verification key."
+
 
 -- | Register a shelley staking key.
 shelleyRegisterStakingAddress
@@ -199,19 +263,29 @@ buildByronTransaction ins outs =
     bTxHash = coerce $ Crypto.hashRaw (LBS.fromStrict bTxCbor)
 
 
-buildShelleyTransaction :: [TxIn] -> [TxOut] -> SlotNo -> Lovelace -> TxUnsigned
-buildShelleyTransaction txins txouts ttl fee =
-    TxUnsignedShelley $
-      Shelley.TxBody
-        (Set.fromList (map toShelleyTxIn  txins))
-        (Seq.fromList (map toShelleyTxOut txouts))
-        Seq.empty                -- certificates
-        (Shelley.Wdrl Map.empty) -- withdrawals
-        (toShelleyLovelace fee)
-        ttl
-        Shelley.SNothing         -- update proposals
-        Shelley.SNothing         -- metadata hash
-
+buildShelleyTransaction
+  :: [TxIn]
+  -> [TxOut]
+  -> SlotNo
+  -> Lovelace
+  -> [Certificate]
+  -> TxUnsigned
+buildShelleyTransaction txins txouts ttl fee certs = do
+  let relevantCerts = catMaybes [ certDiscrim c | c <- certs ]
+  TxUnsignedShelley $
+    Shelley.TxBody
+      (Set.fromList (map toShelleyTxIn  txins))
+      (Seq.fromList (map toShelleyTxOut txouts))
+      (Seq.fromList relevantCerts)  -- certificates
+      (Shelley.Wdrl Map.empty)      -- withdrawals
+      (toShelleyLovelace fee)
+      ttl
+      Shelley.SNothing              -- update proposals
+      Shelley.SNothing              -- metadata hash
+ where
+   certDiscrim :: Certificate -> Maybe ShelleyCertificate
+   certDiscrim (ShelleyDelegationCertificate delegCert) = Just delegCert
+   certDiscrim (ShelleyStakePoolCertificate sPoolCert) = Just sPoolCert
 
 {-
 inputs outputs, attributes:
