@@ -322,7 +322,7 @@ pTransaction =
                                    <*> pTxTTL
                                    <*> pTxFee
                                    <*> pTxBodyFile Output
-                                   <*> some pCertificate
+                                   <*> many pCertificate
 
     pTransactionSign  :: Parser TransactionCmd
     pTransactionSign = TxSign <$> pTxBodyFile Input

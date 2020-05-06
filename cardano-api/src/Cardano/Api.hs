@@ -271,7 +271,7 @@ buildShelleyTransaction
   -> [Certificate]
   -> TxUnsigned
 buildShelleyTransaction txins txouts ttl fee certs = do
-  let relevantCerts = catMaybes [ certDiscrim c | c <- certs ]
+  let relevantCerts = [ certDiscrim c | c <- certs ]
   TxUnsignedShelley $
     Shelley.TxBody
       (Set.fromList (map toShelleyTxIn  txins))
@@ -283,9 +283,9 @@ buildShelleyTransaction txins txouts ttl fee certs = do
       Shelley.SNothing              -- update proposals
       Shelley.SNothing              -- metadata hash
  where
-   certDiscrim :: Certificate -> Maybe ShelleyCertificate
-   certDiscrim (ShelleyDelegationCertificate delegCert) = Just delegCert
-   certDiscrim (ShelleyStakePoolCertificate sPoolCert) = Just sPoolCert
+   certDiscrim :: Certificate -> ShelleyCertificate
+   certDiscrim (ShelleyDelegationCertificate delegCert) = delegCert
+   certDiscrim (ShelleyStakePoolCertificate sPoolCert) = sPoolCert
 
 {-
 inputs outputs, attributes:
@@ -325,7 +325,7 @@ witnessTransaction txu nw signKey =
         TxWitShelley $ shelleyWitnessTransaction tx signKey
 
 byronWitnessTransaction :: Crypto.Hash Byron.Tx -> Network -> SigningKey -> ByronWitness
-byronWitnessTransaction _ _ (SigningKeyShelley _) = panic "Cardano.Api.byronWitnessTransaction: Please provide a shelley signing key."
+byronWitnessTransaction _ _ (SigningKeyShelley _) = panic "Cardano.Api.byronWitnessTransaction: Please provide a byron signing key."
 byronWitnessTransaction txHash nw (SigningKeyByron signKey) =
     Byron.VKWitness
       (Crypto.toVerification signKey)
@@ -339,7 +339,7 @@ byronWitnessTransaction txHash nw (SigningKeyByron signKey) =
         Testnet pm -> pm
 
 shelleyWitnessTransaction :: ShelleyTxBody -> SigningKey -> ShelleyWitnessVKey
-shelleyWitnessTransaction _ (SigningKeyByron _) = panic "Cardano.Api.shelleyWitnessTransaction: Please provide a byron signing key."
+shelleyWitnessTransaction _ (SigningKeyByron _) = panic "Cardano.Api.shelleyWitnessTransaction: Please provide a shelley signing key."
 shelleyWitnessTransaction txbody (SigningKeyShelley sk) =
     Shelley.WitVKey vk sig
   where
