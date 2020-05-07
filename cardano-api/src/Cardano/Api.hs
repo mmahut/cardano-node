@@ -31,7 +31,7 @@ module Cardano.Api
   , Lovelace (..)
   , SlotNo (..)
   , Shelley.Coin (..)
-
+  , Shelley.StakePoolRelay (..)
   , ShelleyTxBody
 
   , getTxSignedBody
@@ -63,6 +63,12 @@ module Cardano.Api
 
   -- * Shelley Delegation Certificate Related
   , Certificate(..)
+  , Shelley.DnsName(..)
+  , Shelley.PoolMetaData(..)
+  , Shelley.Url(..)
+  , Shelley.mkDnsName
+  , Shelley.mkUrl
+  , Shelley.maybeToStrictMaybe
   , shelleyDeregisterStakingAddress
   , shelleyDelegateStake
   , shelleyRegisterStakingAddress

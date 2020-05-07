@@ -66,6 +66,7 @@ runNodeCmd (NodeIssueOpCert vk sk ctr p out) =
 
 
 runPoolCmd :: PoolCmd -> ExceptT CliError IO ()
+runPoolCmd (PoolRegistrationCertificate requirements) = runPoolGenRegistrationCert requirements
 runPoolCmd cmd = liftIO $ putStrLn $ "runPoolCmd: " ++ show cmd
 
 
@@ -161,3 +162,29 @@ runNodeIssueOpCert (VerificationKeyFile vkeyKESPath)
       -- a new cert but without updating the counter.
       writeOperationalCertIssueCounter ocertCtrPath (succ issueNumber)
       writeOperationalCert certFile cert vkey
+
+-- TODO: These should probably live in its own module.
+--
+-- Stake pool command implementations
+--
+
+runPoolGenRegistrationCert :: PoolRegistrationCertificateRequirements -> ExceptT CliError IO ()
+runPoolGenRegistrationCert PoolRegistrationCertificateRequirements{..} = do
+  -- Need to read verification key etc and then you can create a cert
+  let poolVRFVerKeyHash =
+      poolMargin' = poolMargin
+      poolRewardActs = poolRewardVerKeyFile
+      poolOwners' = poolOwners
+
+
+  let regCert = shelleyRegisterStakePool
+                  poolVerKeyHash
+                  poolVRFVerKeyHash
+                  poolPledge
+                  poolCost
+                  poolMargin'
+                  poolRewardActs
+                  poolOwners
+                  poolRelays
+                  poolMetaData
+  writeCertificate ""

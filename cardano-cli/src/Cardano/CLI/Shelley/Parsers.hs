@@ -36,6 +36,7 @@ import           Cardano.Config.Types (CertificateFile (..), CLISocketPath,
 import           Cardano.Config.Shelley.OCert (KESPeriod(..))
 import           Cardano.CLI.Key (VerificationKeyFile(..))
 
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.Text as Text
 import           Data.Time.Clock (UTCTime)
 import           Data.Time.Format (defaultTimeLocale, iso8601DateFormat, parseTimeOrError)
@@ -104,11 +105,44 @@ data NodeCmd
 
 
 data PoolCmd
-  = PoolRegister PoolId   -- { operator :: PubKey, owner :: [PubKey], kes :: PubKey, vrf :: PubKey, rewards :: PubKey, cost :: Lovelace, margin :: Margin, nodeAddr :: NodeAddress }
+  = PoolRegistrationCertificate PoolRegistrationCertificateRequirements
+  | PoolRegister PoolId   -- { operator :: PubKey, owner :: [PubKey], kes :: PubKey, vrf :: PubKey, rewards :: PubKey, cost :: Lovelace, margin :: Margin, nodeAddr :: NodeAddress }
   | PoolReRegister PoolId -- { operator :: PubKey, owner :: [PubKey], kes :: PubKey, vrf :: PubKey, rewards :: PubKey, cost :: Lovelace, margin :: Margin, nodeAddr :: NodeAddress }
   | PoolRetire PoolId EpochNo NodeAddress
   deriving (Eq, Show)
 
+data PoolRegistrationCertificateRequirements =
+  PoolRegistrationCertificateRequirements
+    { poolVerKeyFile :: VerificationKeyFile
+    , poolVRFVerKeyFile :: VerificationKeyFile
+    , poolPledge :: ShelleyCoin
+    , poolCost :: ShelleyCoin
+    , poolMargin :: Double
+    , poolRewardVerKeyFile :: VerificationKeyFile
+    , poolOwners :: [VerificationKeyFile]
+    , poolRelays :: [ShelleyStakePoolRelay]
+    , poolMetaData :: Maybe ShelleyStakePoolMetaData
+    } deriving (Eq, Show)
+{-
+ShelleyVerificationKeyHash
+  -- ^ Pool public key.
+  -> ShelleyVRFVerificationKeyHash
+  -- ^ VRF verification key hash.
+  -> ShelleyCoin
+  -- ^ Pool pledge.
+  -> ShelleyCoin
+  -- ^ Pool cost.
+  -> ShelleyStakePoolMargin
+  -- ^ Pool margin.
+  -> ShelleyRewardAccount
+  -- ^ Pool reward account.
+  -> ShelleyStakePoolOwners
+  -- ^ Pool owners.
+  -> [Shelley.StakePoolRelay] --Seq.StrictSeq Shelley.StakePoolRelay
+  -- ^ Pool relays.
+  -> Maybe Shelley.PoolMetaData -- Shelley.StrictMaybe Shelley.PoolMetaData
+  -> Certificate
+-}
 
 data QueryCmd
   = QueryPoolId NodeAddress
@@ -397,8 +431,23 @@ pPoolCmd =
           (Opt.info pPoolReRegster $ Opt.progDesc "Re-register a stake pool")
       , Opt.command "retire"
           (Opt.info pPoolRetire $ Opt.progDesc "Retire a stake pool")
+      , Opt.command "registration-certificate"
+          (Opt.info pPoolRegistrationCertificate $ Opt.progDesc "Create a stake pool registration certificate")
       ]
   where
+    pPoolRegistrationCertificate :: Parser PoolCmd
+    pPoolRegistrationCertificate = PoolRegistrationCertificate <$> (PoolRegistrationCertificateRequirements
+                                                                      <$> pPoolVerificationKeyFile
+                                                                      <*> pPoolVRFVerificationKeyFile
+                                                                      <*> pPoolPledge
+                                                                      <*> pPoolCost
+                                                                      <*> pPoolMargin
+                                                                      <*> pPoolRewardsVerificationKeyFile
+                                                                      <*> some pPoolOwners
+                                                                      <*> many pPoolRelays
+                                                                      <*> pPoolMetaData
+                                                                      )
+
     pPoolRegster :: Parser PoolCmd
     pPoolRegster = PoolRegister <$> pPoolId
 
@@ -729,6 +778,108 @@ pPoolId =
       (  Opt.long "pool-id"
       <> Opt.metavar "STRING"
       <> Opt.help "The pool identifier."
+      )
+
+pPoolCost :: Parser ShelleyCoin
+pPoolCost =
+  Opt.option
+    (Coin <$> Opt.auto)
+      (  Opt.long "pool-cost"
+      <> Opt.metavar "INT"
+      <> Opt.help "The cost of the stake pool."
+      )
+
+pPoolMargin :: Parser Double
+pPoolMargin =
+  Opt.option
+    Opt.auto
+      (  Opt.long "pool-margin"
+      <> Opt.metavar "DOUBLE"
+      <> Opt.help "The margin of the stake pool."
+      )
+
+pPoolMetaData :: Parser (Maybe ShelleyStakePoolMetaData)
+pPoolMetaData =
+    Opt.optional $ PoolMetaData <$> pUrl <*> pMDHash
+  where
+    pUrl :: Parser Url
+    pUrl = mkUrl . Text.pack <$>
+             Opt.strOption
+               (  Opt.long "url"
+               <> Opt.metavar "URL"
+               <> Opt.help ("Pool metadata url.")
+               )
+    pMDHash :: Parser ByteString
+    pMDHash = C8.pack <$>
+                Opt.strOption
+                  (  Opt.long "mdhash"
+                  <> Opt.metavar "STRING"
+                  <> Opt.help ("Pool metadata hash.")
+                  )
+
+pPoolRelays :: Parser ShelleyStakePoolRelay
+pPoolRelays = pSingleHostName -- <|> pSingleHostAddr <|> pMultiHostName
+  where
+    pSingleHostName :: Parser ShelleyStakePoolRelay
+    pSingleHostName = SingleHostName
+                        <$> (pure $ maybeToStrictMaybe Nothing)
+                        <*> pDnsName
+
+    pDnsName :: Parser DnsName
+    pDnsName = mkDnsName . Text.pack <$>
+                 Opt.strOption
+                   (  Opt.long "dns-name"
+                   <> Opt.metavar "STRING"
+                   <> Opt.help ("Pool relay DNS name.")
+                   )
+
+    -- TODO:
+    -- pSingleHostAddr :: Parser ShelleyStakePoolRelay
+    -- pMultiHostName :: Parser ShelleyStakePoolRelay
+
+pPoolOwners :: Parser VerificationKeyFile
+pPoolOwners =
+  VerificationKeyFile <$>
+    Opt.strOption
+      (  Opt.long "stake-pool-owner-verification-key-file"
+      <> Opt.metavar "FILEPATH"
+      <> Opt.help ("Filepath of the stake pool owner verification key.")
+      )
+
+pPoolPledge :: Parser ShelleyCoin
+pPoolPledge =
+  Opt.option
+    (Coin <$> Opt.auto)
+      (  Opt.long "pool-pledge"
+      <> Opt.metavar "INT"
+      <> Opt.help "The pledge amount of the stake pool."
+      )
+
+pPoolRewardsVerificationKeyFile :: Parser VerificationKeyFile
+pPoolRewardsVerificationKeyFile =
+  VerificationKeyFile <$>
+    Opt.strOption
+      (  Opt.long "rewards-verification-key-file"
+      <> Opt.metavar "FILEPATH"
+      <> Opt.help ("Filepath of the stake pool rewards verification key.")
+      )
+
+pPoolVerificationKeyFile :: Parser VerificationKeyFile
+pPoolVerificationKeyFile =
+  VerificationKeyFile <$>
+    Opt.strOption
+      (  Opt.long "verification-key-file"
+      <> Opt.metavar "FILEPATH"
+      <> Opt.help ("Filepath of the stake pool verification key.")
+      )
+
+pPoolVRFVerificationKeyFile :: Parser VerificationKeyFile
+pPoolVRFVerificationKeyFile =
+  VerificationKeyFile <$>
+    Opt.strOption
+      (  Opt.long "vrf-verification-key-file"
+      <> Opt.metavar "FILEPATH"
+      <> Opt.help ("Filepath of the stake pool VRF verification key.")
       )
 
 pPrivKeyFile :: Parser PrivKeyFile
