@@ -30,6 +30,7 @@ module Cardano.Api
   , TxIx
   , Lovelace (..)
   , SlotNo (..)
+  , Shelley.Coin (..)
 
   , ShelleyTxBody
 
@@ -49,8 +50,10 @@ module Cardano.Api
   , queryFilteredUTxOFromLocalState
   , queryPParamsFromLocalState
 
+  , ShelleyCoin
   , ShelleyCredential
   , ShelleyRewardAccount
+  , ShelleyStakePoolMargin
   , ShelleyStakePoolMetaData
   , ShelleyStakePoolOwners
   , ShelleyStakePoolRelay
@@ -98,6 +101,7 @@ import qualified Cardano.Chain.Common  as Byron
 import qualified Cardano.Chain.Genesis as Byron
 import qualified Cardano.Chain.UTxO    as Byron
 
+import qualified Shelley.Spec.Ledger.Coin      as Shelley
 import qualified Shelley.Spec.Ledger.Keys      as Shelley
 import qualified Shelley.Spec.Ledger.Slot      as Shelley
 import qualified Shelley.Spec.Ledger.TxData    as Shelley

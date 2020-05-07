@@ -4,6 +4,7 @@
 module Test.Cardano.Api.Gen
   ( genAddress
   , genCertificate
+  , genCredentialShelley
   , genNetwork
   , genSigningKey
   , genSigningKeyByron

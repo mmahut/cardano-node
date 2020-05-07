@@ -33,6 +33,12 @@ prop_Certificate_CBOR =
     addr <- H.forAll genCertificate
     H.tripping addr certificateToCBOR certificateFromCBOR
 
+prop_CredentialShelley_CBOR :: Property
+prop_CredentialShelley_CBOR =
+  H.property $ do
+    addr <- H.forAll genCredentialShelley
+    H.tripping addr credentialToCBOR credentialFromCBOR
+
 
 prop_SigningKey_CBOR :: Property
 prop_SigningKey_CBOR =
